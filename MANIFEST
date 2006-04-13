@@ -1,0 +1,12 @@
+ChangeLog
+INSTALL
+MANIFEST
+META.yml
+Makefile.PL
+README
+doc/TODO
+lib/WWW/PkgFind.pm
+scripts/pkgfind
+t/00_initialize.t
+t/01_script_compile.t
+t/zz_dump_config.t
