@@ -1,5 +1,18 @@
 Revision history for pkgfind.
-
+	
+1.1  Wed Apr 19 19:00:00 2006
+	- Added "use_mirror" capability to download from SourceForge
+	  mirrors 
+	- Various bug fixes to get WWW::PkgFind to run in production.
+	- Restored parent_url (needed by the stdin portion of pkgfind)
+	- Debugging comments
+	- URI capability check (does URI object have host() method?)
+	- Issue error if /usr/bin/curl does not exist
+	
+	
+1.00  Wed Apr 14 17:00:00 2006
+	- First release!
+	
 0.01  Thu Dec  8 17:23:50 2005
 	- original version; created by sdist 1.11
 

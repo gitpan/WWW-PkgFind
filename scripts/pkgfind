@@ -3,6 +3,9 @@
 eval 'exec /usr/bin/perl -w -S $0 ${1+"$@"}'
     if 0; # not running under some shell
 
+eval 'exec /usr/bin/perl -w -S $0 ${1+"$@"}'
+    if 0; # not running under some shell
+
 use strict;
 use Pod::Usage;
 use Getopt::Long;
@@ -83,6 +86,7 @@ sub main {
         $Pkg = new WWW::PkgFind($opt_name);
 
         $Pkg->depth           ( $opt_depth     );
+        $Pkg->parent_url      ( $opt_url       );
         $Pkg->active_urls     ( $opt_url       );
         $Pkg->wanted_regex    ( $opt_wanted    );
         $Pkg->not_wanted_regex( $opt_notwanted );
@@ -99,16 +103,21 @@ sub main {
         chomp;
         if ($_ =~ m|^\s*PACKAGE:\s+(.+)$|i) {
             my $package_name = $1;
-            if (defined $Pkg->package_name()
-                and     $Pkg->parent_url() ne '') {
+            if ($Pkg
+                and defined $Pkg->package_name()
+                and         $Pkg->parent_url()) {
                 
                 # Process the package we've loaded so far
                 warn "# Retrieving packages...\n" if $opt_debug>1;
                 $Pkg->retrieve($opt_destination);
+                warn "Finished.\n" if $opt_debug>2;
             }
 
             # Start a new package
             $Pkg = new WWW::PkgFind($package_name);
+            $Pkg->set_debug($opt_debug);
+            $Pkg->set_create_queue( $opt_queue     );
+            $Pkg->depth($opt_depth);
         }
            
         if ($_ =~ m|^\s*URL:\s+(.+)$|i) {
@@ -131,6 +140,19 @@ sub main {
         if ($_ =~ m|^\s*NOTWANTED:\s*(.+)$|i) {
             warn "Found a NOTWANTED regex...\n" if $opt_debug>2;
             $Pkg->not_wanted_regex($1);
+        }
+       
+        # Load the mirrors, if any
+        if ($_ =~ m|^\s*MIRRORS:\s*(.+)$|i) {
+            warn "Found MIRRORS list...\n" if $opt_debug>2;
+            my @mirrors = split /,/, $1;
+            $Pkg->mirrors(@mirrors);
+        }
+       
+        # Load the mirrors, if any
+        if ($_ =~ m|^\s*MIRROR_URL:\s*(.+)$|i) {
+            warn "Found a MIRROR_URL...\n" if $opt_debug>2;
+            $Pkg->mirror_url($1);
         }
        
         # Load the rename regex's
@@ -175,6 +197,8 @@ Specify the conditions to package_retriever's stdin, in this form:
  WANTED:      patch-2\.6.*gz
  NOTWANTED:   patch-2\.6\.[89].*gz
  NOTWANTED:   patch-.*test\d*\.gz
+ MIRRORS:     ufpr,jaist,superb-east,surfnet,mesh
+
 
 The parameters allowed are as follows:
 
@@ -195,6 +219,24 @@ at least ONE of these.
 NOTWANTED - A Perl Regular Expression indicating filenames to ignore.
 Multiple NOTWANTED expressions can be used; the file must not match
 ANY of these.
+
+MIRRORS - Causes MIRROR_URL, or URL if MIRROR_URL is not defined, to be
+modified to include a randomly selected mirror by substituting the
+strings "MIRROR" and "FILENAME".  For example, to download a package
+from SourceForge, set URL to
+"http://prdownloads.sourceforge.net/crucible/FILENAME", then construct
+your MIRROR_URL like
+"http://MIRROR.dl.sourceforge.net/sourceforge/crucible/", and set
+MIRRORS to "switch,kent,mesh,surfnet" or whatever; pkgfind will select
+one of those four mirrors randomly and plug it into the URL.
+
+MIRROR_URL - If this and MIRRORS is defined, will cause WWW::PkgFind to
+download packages from a url constructed by taking MIRROR_URL and
+substituting a randomly selected item from MIRRORS for the string
+"MIRROR".
+
+RENAME - Allows specifying a regular expression to do a rename on the
+package after it is downloaded.
 
 
 The motivation for this script is to poll places where developers post
@@ -306,7 +348,7 @@ under the same terms as Perl itself.
 
 =head1 REVISION
 
-Revision: $Revision: 1.2 $
+Revision: $Revision: 1.4 $
 
 =cut
 

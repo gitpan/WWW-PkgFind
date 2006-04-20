@@ -1,10 +1,12 @@
 =head1 NAME
 
-WWW::PkgFind -  Spiders given URL(s) downloading wanted files
+WWW::PkgFind - Spiders given URL(s) mirroring wanted files and
+triggering post-processing (e.g. tests) against them.
 
 =head1 SYNOPSIS
 
-my $Pkg = new WWW::PkgFind("foobar");
+my $Pkg = new WWW::PkgFind("my_package");
+
 $Pkg->depth(3);
 $Pkg->active_urls("ftp://ftp.somesite.com/pub/joe/foobar/");
 $Pkg->wanted_regex("patch-2\.6\..*gz", "linux-2\.6.\d+\.tar\.bz2");
@@ -13,7 +15,14 @@ $Pkg->retrieve();
 
 =head1 DESCRIPTION
 
-TODO
+This module provides a way to mirror new packages on the web and trigger
+post-processing operations against them.  It allows you to point it at
+one or more URLs and scan for any links matching (or not matching) given
+patterns, and downloading them to a given location.  Newly downloaded
+files are also identified in a queue for other programs to perform
+post-processing operations on, such as queuing test runs.
+
+
 
 =head1 FUNCTIONS
 
@@ -29,6 +38,7 @@ use LWP::Simple;
 use WWW::RobotRules;
 use File::Spec::Functions;
 use File::Path;
+use Algorithm::Numerical::Shuffle qw /shuffle/;
 
 use fields qw(
               _debug
@@ -37,6 +47,9 @@ use fields qw(
               wanted_regex
               not_wanted_regex
               rename_regexp
+              mirrors
+              mirror_url
+              parent_url
               active_urls
               robot_urls
               files
@@ -51,7 +64,14 @@ $VERSION = '1.00';
 
 =head2 new([$pkg_name], [$agent_desc])
 
-Creates a new WWW::PkgFind object
+Creates a new WWW::PkgFind object, initializing all data members.
+
+pkg_name is an optional argument to specify the name of the package.
+WWW::PkgFind will place files it downloads into a directory of this
+name.  If not defined, will default to "unnamed_package".
+
+agent_desc is an optional parameter to be appended to the user agent
+string that WWW::PkgFind uses when accessing remote websites.  
 
 =cut
 sub new {
@@ -66,6 +86,8 @@ sub new {
     $self->{wanted_regex}     = [ ];
     $self->{not_wanted_regex} = [ ];
     $self->{rename_regexp}    = '';
+    $self->{mirrors}          = [ ];
+    $self->{mirror_url}       = '';
     $self->{active_urls}      = [ ];
     $self->{robot_urls}       = { };
     $self->{files}            = [ ];
@@ -86,7 +108,8 @@ sub new {
 
 =head2 package_name()
 
-Gets/sets the package name
+Gets or sets the package name.  When a file is downloaded, it will be
+placed into a sub-directory by this name.
 
 =cut
 sub package_name {
@@ -97,7 +120,24 @@ sub package_name {
     return $self->{package_name};
 }
 
+# Undocumented function.  I don't think this is actually needed, but the
+# pkgfind script requires it.
+sub parent_url {
+    my $self = shift;
+    if (@_) {
+        $self->{parent_url} = shift;
+    }
+    return $self->{parent_url};
+}
+
 =head2 depth()
+
+Gets or sets the depth to spider below URLs.  Set to 0 if only the
+specified URL should be scanned for new packages.  Defaults to 5.
+
+A typical use for this would be if you are watching a site where new
+patches are posted, and the patches are organized by the version of
+software they apply to, such as ".../linux/linux-2.6.17/*.dif".
 
 =cut
 sub depth {
@@ -108,7 +148,21 @@ sub depth {
     return $self->{depth};
 }
 
-=head2 wanted_regex()
+=head2 wanted_regex($regex1, [$regex2, ...])
+
+Gets or adds a regular expression to control what is downloaded from a
+page.  For instance, a project might post source tarballs, binary
+tarballs, zip files, rpms, etc., but you may only be interested in the
+source tarballs.  You might specify this by calling
+
+    $self->wanted_regex("^.*\.tar\.gz$", "^.*\.tgz$");
+
+By default, all files linked on the active urls will be retrieved
+(including html and txt files.)
+
+You can call this function multiple times to add additional regex's.
+
+The return value is the current array of regex's.
 
 =cut
 sub wanted_regex {
@@ -123,6 +177,19 @@ sub wanted_regex {
 
 =head2 not_wanted_regex()
 
+Gets or adds a regular expression to control what is downloaded from a
+page.  Unlike the wanted_regex, this specifies what you do *not* want.
+These regex's are applied after the wanted_regex's, thus allowing you
+to fine tune the selections.
+
+A typical use of this might be to limit the range of release versions
+you're interested in, or to exclude certain packages (such as
+pre-release versions).
+
+You can call this function multiple times to add additional regexp's.
+
+The return value is the current array of regex's.
+
 =cut
 sub not_wanted_regex {
     my $self = shift;
@@ -134,9 +201,52 @@ sub not_wanted_regex {
     return @{$self->{not_wanted_regex}};
 }
 
-=head2 rename_regex()
+=head2 mirrors()
+
+Sets or gets the list of mirrors to use for the package.  This causes
+the URL to be modified to include the mirror name prior to retrieval.
+The mirror used will be selected randomly from the list of mirrors
+provided.
+
+This is designed for use with SourceForge's file mirror system, allowing
+WWW::PkgFind to watch a project's file download area on
+prdownloads.sourceforge.net and retrieve files through the mirrors.
+
+You can call this function multiple times to add additional regexp's.
 
 =cut
+sub mirrors {
+    my $self = shift;
+
+    foreach my $mirror (@_) {
+        next unless $mirror;
+        push @{$self->{mirrors}}, $mirror;
+    }
+    return @{$self->{mirrors}};
+}
+
+=head2 mirror_url()
+
+Gets or sets the URL template to use when fetching from a mirror system
+like SourceForge's.  The strings "MIRROR" and "FILENAME" in the URL will
+be substituted appropriately when retrieve() is called.
+
+=cut
+sub mirror_url {
+    my $self = shift;
+
+    if (@_) {
+        $self->{mirror_url} = shift;
+    }
+    return $self->{mirror_url};
+}
+
+# rename_regex()
+
+# Gets or sets a regular expression to be applied to the filename after it
+# is downloaded.  This allows you to fix-up filenames of packages, such as to 
+# reformat the version info and so forth.
+
 sub rename_regex {
     my $self = shift;
 
@@ -146,7 +256,11 @@ sub rename_regex {
     return $self->{rename_regex};
 }
 
-=head2 active_urls()
+=head2 active_urls([$url1], [$url2], ...)
+
+Gets or adds URLs to be scanned for new file releases.
+
+You can call this function multiple times to add additional regexp's.
 
 =cut
 sub active_urls {
@@ -154,14 +268,12 @@ sub active_urls {
 
     foreach my $url (@_) {
         next unless $url;
-        push @{$self->{active_urls}}, [$url, $self->{depth}];
+        push @{$self->{active_urls}}, [$url, 0];
     }
     return @{$self->{active_urls}};
 }
 
-=head2 robot_urls()
-
-=cut
+# Undocumented function
 sub robot_urls {
     my $self = shift;
 
@@ -174,18 +286,20 @@ sub robot_urls {
 
 =head2 files()
 
+Returns a list of the files that were found at the active URLs, that
+survived the wanted_regex and not_wanted_regex patterns.  This is for
+informational purposes only.
+
 =cut
 sub files {
     my $self = shift;
 
-    foreach my $file (@_) {
-        next unless $file;
-        push @{$self->{files}}, $file;
-    }
     return @{$self->{files}};
 }
 
 =head2 processed()
+
+Returns true if retrieved() has been called.
 
 =cut
 sub processed {
@@ -278,8 +392,12 @@ sub get_file {
     my $url = shift  || return undef;
     my $dest = shift || return undef;
 
+    warn "Creating URI object using '$url'\n" if $self->{_debug}>2;
     my $uri = URI->new($url);
-    if (! defined $self->{robot_urls}->{$uri->host()}) {
+    if (! $uri->can("host") ) {
+        warn "ERROR:  URI object lacks host() object method\n";
+        return undef;
+    } elsif (! defined $self->{robot_urls}->{$uri->host()}) {
         my $robot_url = $uri->host() . "/robots.txt";
         my $robot_txt = get $robot_url;
         if (defined $robot_txt) {
@@ -294,6 +412,10 @@ sub get_file {
     if (! $self->{rules}->allowed($url) ) {
         warn "ROBOTS:  robots.txt denies access to '$url'\n";
         return 0;
+    }
+
+    if (! -e "/usr/bin/curl") {
+        die "ERROR:  Could not locate curl executable at /usr/bin/curl!";
     }
 
     my $incoming = "${dest}.incoming";
@@ -316,15 +438,14 @@ sub get_file {
 }
 
 
-=head2
-
-=cut
+# Internal routine
 sub _process_active_urls {
     my $self = shift;
 
     warn "In WWW::PkgFind::_process_active_urls()\n" if $self->{_debug}>4;
 
     while ($self->{'active_urls'} && @{$self->{'active_urls'}}) {
+        warn "Processing active_url\n" if $self->{_debug}>3;
         my $u_d = pop @{$self->{'active_urls'}};
 
         if (! $u_d) {
@@ -337,6 +458,7 @@ sub _process_active_urls {
             warn "Current depth undefined... assuming $depth\n" if $self->{_debug}>0;
         }
 
+        warn "depth=$depth; self->depth=$self->{'depth'}\n" if $self->{_debug}>4;
         next if ( $depth > $self->{'depth'});
 
         # Get content of this page
@@ -373,8 +495,8 @@ sub _process_line {
     my $is_wanted = $self->want_file($match);
     if ( $is_wanted ) {
         warn "FOUND FILE '$match'\n" if $self->{_debug}>1;
-#        push @{$self->{'files'}}, "$new_url/$match";
-        push @{$self->{'files'}}, "$match";
+        push @{$self->{'files'}}, "$new_url/$match";
+#        push @{$self->{'files'}}, "$match";
 
     } elsif (! defined $is_wanted) {
         return if ($depth == $self->{'depth'});
@@ -432,7 +554,21 @@ sub _process_line {
 }
 
 
-=head2 retrieve()
+=head2 retrieve($destination)
+
+This function performs the actual scanning and retrieval of packages.
+Call this once you've configured everything.  The required parameter
+$destination is used to specify where on the local filesystem files
+should be stored.  retrieve() will create a subdirectory for the package
+name under this location, if it doesn't already exist.
+
+The function will obey robot rules by checking for a robots.txt file,
+and can be made to navigate a mirror system like SourceForge (see
+mirrors() above).
+
+If configured, it will also create a symbolic link to the newly
+downloaded file(s) in the directory specified by the set_create_queue()
+function.
 
 =cut
 sub retrieve {
@@ -484,10 +620,26 @@ sub retrieve {
             warn "EXISTS:  '$dest'\n" if $self->{_debug}>0;
         } else {
             warn "NEW '$wanted_url'\n" if $self->{_debug}>0;
+            my $found = undef;
 
-            if (! $self->get_file($wanted_url, $dest)) {
+            if ($self->mirrors() > 0) {
+                foreach my $mirror (shuffle $self->mirrors()) {
+                    my $mirror_url = $self->mirror_url() || $wanted_url;
+                    $mirror_url =~ s/MIRROR/$mirror/g;
+                    $mirror_url =~ s/FILENAME/$filename/g;
+                    warn "MIRROR: Trying '$mirror_url'\n" if $self->{_debug}>0;
+                    if ($self->get_file($mirror_url, $dest)) {
+                        $found = 1;
+                        last;
+                    }
+                }
+            } elsif (! $self->get_file($wanted_url, $dest)) {
                 warn "FAILED RETRIEVING $wanted_url.  Skipping.\n";
             } else {
+                $found = 1;
+            } 
+            
+            if ($found) { 
                 warn "RETRIEVED $dest\n";
 
                 if (defined $self->{create_queue}) {
