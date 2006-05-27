@@ -1,4 +1,7 @@
 Revision history for pkgfind.
+
+1.2  Fri May 26 17:30:00 2006
+	- Added git-pull script to get patches from git repos
 	
 1.1  Wed Apr 19 19:00:00 2006
 	- Added "use_mirror" capability to download from SourceForge

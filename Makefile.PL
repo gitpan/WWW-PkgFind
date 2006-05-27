@@ -11,8 +11,11 @@ my %opts = (
             'NAME'          => "WWW-PkgFind",
             'AUTHOR'        => "Bryce Harrington <bryce\@bryceharrington.org>",
             'ABSTRACT_FROM' => "lib/WWW/PkgFind.pm",
-            'VERSION'       => "1.1",
-            'EXE_FILES'     => [ qw( scripts/pkgfind ) ],
+            'VERSION'       => "1.2",
+            'EXE_FILES'     => [ qw( 
+                                     scripts/pkgfind 
+                                     scripts/git-pkgfind
+                                     ) ],
             'PREREQ_PM'     => {
                 'LWP::Simple'     => 0,
                 'WWW::RobotRules' => 0,
