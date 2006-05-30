@@ -1,5 +1,9 @@
 Revision history for pkgfind.
 
+SVN HEAD
+	- Altered patch name to include the BRANCH name in it, for
+	  descriptive purposes
+	
 1.2  Fri May 26 17:30:00 2006
 	- Added git-pull script to get patches from git repos
 	

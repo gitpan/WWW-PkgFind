@@ -9,13 +9,15 @@ Usage: $0 [-b <BRANCH>] [-c <CLONES_DIR>] [-d <DEST_DIR>]
           [-?] [-h] [-f] [-F] [-T]
 
 Creates a patch (or tarball if -T is specified) from BRANCH of REPO in
-the directory DEST_DIR, named "PATCH_PREFIX-<branch_id>.PATCH_EXT".
-Will not overwrite an existing file by this name, unless the -f option
-is specified.  A clone of the branch will be created and cached in
-"CLONES_DIR/BRANCH".  The cached tree will be reused, if it exists,
-unless the -F option is specified.  <branch_id> is determined from the
-git clone and will be a string beginning with 'g' of the form
-"g1234abc".
+the directory DEST_DIR, named
+"PATCH_PREFIX-<branch_id>-BRANCH.PATCH_EXT".  Will not overwrite an
+existing file by this name, unless the -f option is specified.  A clone
+of the branch will be created and cached in "CLONES_DIR/BRANCH".  The
+cached tree will be reused, if it exists, unless the -F option is
+specified.  <branch_id> is determined from the git clone and will be a
+string beginning with 'g' of the form "g1234abc".  If the 'origin'
+branch is used, then the patch will be named
+"PATCH_PREFIX-origin.PATCH_EXT"
 
 If not specified, the CLONES_DIR and DEST_DIR will be the current
 working directory, PATCH_EXT will be "diff", REPO will be 
@@ -122,8 +124,10 @@ fi
 
 echo "git describe $BRANCH"
 BRANCH_ID=`git describe $BRANCH`
+BRANCH_DESC="-$BRANCH"
 if [ "$BRANCH" == "origin" ]; then
     BRANCH_ID=$BRANCH
+    BRANCH_DESC=""
 elif [ -z "$BRANCH_ID" ]; then
     echo "ERROR:  Could not determine branch id"
     exit 1
@@ -135,7 +139,7 @@ BASE=`echo $BRANCH_ID | sed "s/-g[a-z0-9]*$//"`
 # Strip off leading 'v' if necessary
 BRANCH_ID=`echo $BRANCH_ID | sed "s/^v//"`
 
-PATCH="$PATCH_PREFIX-$BRANCH_ID.$PATCH_EXT"
+PATCH="$PATCH_PREFIX-$BRANCH_ID$BRANCH_DESC.$PATCH_EXT"
 
 if [ -e $DEST_DIR/$PATCH ]; then
     if [ $FORCE_PATCH_GENERATION -eq 0 ]; then

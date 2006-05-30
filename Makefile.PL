@@ -11,7 +11,7 @@ my %opts = (
             'NAME'          => "WWW-PkgFind",
             'AUTHOR'        => "Bryce Harrington <bryce\@bryceharrington.org>",
             'ABSTRACT_FROM' => "lib/WWW/PkgFind.pm",
-            'VERSION'       => "1.2",
+            'VERSION'       => "1.3",
             'EXE_FILES'     => [ qw( 
                                      scripts/pkgfind 
                                      scripts/git-pkgfind
