@@ -5,8 +5,8 @@
 usage() {
     cat <<EOF
 Usage: $0 [-b <BRANCH>] [-c <CLONES_DIR>] [-d <DEST_DIR>]
-          [-e <PATCH_EXT>] [-p <PATCH_PREFIX>] [-r <REPO>]
-          [-?] [-h] [-f] [-F] [-T]
+          [-e <PATCH_EXT>] [-p <PATCH_PREFIX>] [-r <REPO>] 
+          [-s <SYMLINK_DIR>] [-?] [-h] [-f] [-F] [-T]
 
 Creates a patch (or tarball if -T is specified) from BRANCH of REPO in
 the directory DEST_DIR, named
@@ -24,6 +24,11 @@ working directory, PATCH_EXT will be "diff", REPO will be
 git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux-2.6.git,
 and PATCH_PREFIX will be "linux".  BRANCH defaults to "origin".
 
+If the -s option is specified, a symbolic link to the generated patch
+will also be created in the specified directory.  This link will be
+created with the same filename as the patch, so SYMLINK_DIR must not
+be the same as DEST_DIR.
+
 Each of these parameters may also be provided as environment variables,
 prefixed by PKGFIND_.  E.g., PKGFIND_BRANCH.
 
@@ -32,6 +37,7 @@ Example:
      -r git://linux-nfs.org/~bfields/exports/linux.git \\
      -b nfs-server-stable \\
      -d /testing/packages/nfsv4/ \\
+     -s /testing/packages/QUEUE/ \\
      -c /var/cache/git
 EOF
     exit $1
@@ -43,11 +49,12 @@ REPO=${PKGFIND_REPO:-"git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/lin
 BRANCH=${PKGFIND_BRANCH:-"origin"}
 PATCH_EXT=${PKGFIND_PATCH_EXT:-"diff"}
 DEST_DIR=${PKGFIND_DEST_DIR:-"$PWD"}
+SYMLINK_DIR=${PKGFIND_SYMLINK_DIR:-""}
 FORCE_PATCH_GENERATION=0
 FORCE_RECLONE=0
 TARBALL=0
 
-while getopts "b:c:d:e:p:r:FT\?" opt; do
+while getopts "b:c:d:e:p:r:s:FT\?" opt; do
     case $opt in
     b) BRANCH=$OPTARG ;;
     c) CLONES_DIR=$OPTARG ;;
@@ -56,6 +63,7 @@ while getopts "b:c:d:e:p:r:FT\?" opt; do
     f) FORCE_PATCH_GENERATION=1 ;;
     p) PATCH_PREFIX=$OPTARG ;;
     r) REPO=$OPTARG ;;
+    s) SYMLINK_DIR=$OPTARG ;;
     F) FORCE_RECLONE=1 ;;
     T) TARBALL=1 ;;
     \?) usage 1 ;;
@@ -160,6 +168,14 @@ fi
 
 if [ -s "$DEST_DIR/$PATCH" ]; then
     echo "$PATCH"
+    if [ ! -z "$SYMLINK_DIR" ]; then
+        echo "Symlinking '$DEST_DIR/$PATCH' to '$SYMLINK_DIR/$PATCH'"
+        if [ "$SYMLINK_DIR" == "$DEST_DIR" ]; then
+            echo "ERROR:  Symlink dir must be different than dest_dir"
+        else
+            ln -s $DEST_DIR/$PATCH $SYMLINK_DIR/$PATCH
+        fi
+    fi
 elif [ -f "$DEST_DIR/$PATCH" ]; then
     echo "no diff available"
     rm "$DEST_DIR/$PATCH"
